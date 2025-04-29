@@ -4,7 +4,7 @@
 #include <cstring>
 #include <poll.h>
 
-Watcher::Watcher() {
+Watcher::Watcher(Logger* log) : logger(log) {
     inotifyFd = inotify_init1(IN_NONBLOCK);
     if (inotifyFd == -1) {
         perror("inotify_init1");
@@ -50,9 +50,11 @@ void Watcher::printEvent(const struct inotify_event* event) {
 
     if (event->mask & IN_CREATE) {
         std::cout << "[CREATE] " << fullPath << "\n";
+        logger->logEvent("create", fullPath);
     }
     if (event->mask & IN_DELETE) {
         std::cout << "[DELETE] " << fullPath << "\n";
+        logger->logEvent("delete", fullPath);
     }
     if (event->mask & IN_MODIFY) {
         std::cout << "[MODIFY] " << fullPath << "\n";

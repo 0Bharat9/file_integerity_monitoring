@@ -1,5 +1,6 @@
 #include <iostream>
 #include "Watcher.hpp"
+#include "Logger.hpp"
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
@@ -8,8 +9,10 @@ int main(int argc, char* argv[]) {
     }
 
     const std::string rootPath = argv[1];
+    
+    Logger logger("fim.log");
+    Watcher watcher(&logger);
 
-    Watcher watcher;
     watcher.watchDirectoryRecursive(rootPath);
     watcher.processEvents();
 
