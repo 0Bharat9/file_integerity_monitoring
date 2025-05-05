@@ -26,27 +26,30 @@ void Watcher::addWatchRecursive(const std::string &path) {
     }
   }
 
-  for (const auto &entry : fs::recursive_directory_iterator(path)) {
-    if (entry.is_directory()) {
-      std::string dirPath = entry.path().string();
-      if (pathToWd.find(dirPath) == pathToWd.end()) {
-        int wd = inotify_add_watch(inotifyFd, dirPath.c_str(),
-                                   IN_CREATE | IN_DELETE | IN_MODIFY |
-                                       IN_MOVED_FROM | IN_MOVED_TO);
-        if (wd != -1) {
-          wdToPath[wd] = dirPath;
-          pathToWd[dirPath] = wd;
-          std::cout << "Watching: " << dirPath << "\n";
+  try {
+    for (const auto &entry : fs::recursive_directory_iterator(path)) {
+      if (entry.is_directory()) {
+        std::string dirPath = entry.path().string();
+        if (pathToWd.find(dirPath) == pathToWd.end()) {
+          int wd = inotify_add_watch(inotifyFd, dirPath.c_str(),
+                                     IN_CREATE | IN_DELETE | IN_MODIFY |
+                                         IN_MOVED_FROM | IN_MOVED_TO);
+          if (wd != -1) {
+            wdToPath[wd] = dirPath;
+            pathToWd[dirPath] = wd;
+            std::cout << "Watching: " << dirPath << "\n";
+          }
+        }
+      } else {
+        const std::string filePath = entry.path().string();
+        struct stat sb;
+        if (stat(filePath.c_str(), &sb) == 0) {
+          pathToStat[filePath] = sb;
         }
       }
-    } else {
-      // Cache stat info for existing files
-      const std::string filePath = entry.path().string();
-      struct stat sb;
-      if (stat(filePath.c_str(), &sb) == 0) {
-        pathToStat[filePath] = sb;
-      }
     }
+  } catch (const fs::filesystem_error &e) {
+    std::cerr << "Filesystem error: " << e.what() << "\n";
   }
 }
 
