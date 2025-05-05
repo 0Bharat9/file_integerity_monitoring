@@ -25,7 +25,7 @@ public:
 private:
   void addWatchRecursive(const std::string &path);
   void printEvent(const struct inotify_event *event);
-
+  bool isWatchedPathValid(const std::string &path);
   Logger *logger;
   int inotifyFd;
   std::map<int, std::string> wdToPath;
