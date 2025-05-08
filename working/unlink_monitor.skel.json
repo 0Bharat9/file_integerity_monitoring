@@ -1,0 +1,1 @@
+{"bpf_skel":{"data_sections":[],"maps":[{"ident":"events","name":"events"}],"obj_name":"unlink_monitor_bpf","progs":[{"attach":"kprobe/do_unlinkat","link":true,"name":"do_unlinkat"}]},"eunomia_version":"0.3.4"}
