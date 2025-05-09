@@ -2,6 +2,40 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
+#include "unlink_monitor.h"
+
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 1 << 24); // 16 MB
+} events SEC(".maps");
+
+SEC("kprobe/do_unlinkat")
+int BPF_KPROBE(do_unlinkat, int dfd, struct filename *name)
+{
+    struct event *e;
+    const char *fname;
+
+    e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e)
+        return 0;
+
+    e->pid = bpf_get_current_pid_tgid() >> 32;
+    bpf_get_current_comm(&e->comm, sizeof(e->comm));
+
+    fname = BPF_CORE_READ(name, name);
+    bpf_probe_read_str(&e->filename, sizeof(e->filename), fname);
+
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+char LICENSE[] SEC("license") = "GPL";
+
+/*
+#include "vmlinux.h"
+#include <bpf/bpf_helpers.h>
+#include <bpf/bpf_tracing.h>
+#include <bpf/bpf_core_read.h>
 #include <bpf/bpf_endian.h>
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
@@ -38,5 +72,5 @@ int BPF_KPROBE(do_unlinkat, int dfd, struct filename *name)
 
     bpf_ringbuf_submit(e, 0);
     return 0;
-}
+}*/
 

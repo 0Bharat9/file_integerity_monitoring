@@ -27,7 +27,8 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
     cwd[len] = '\0';
     snprintf(full_path, sizeof(full_path), "%s/%s", cwd, e->filename);
 
-    printf("PID %d deleted file: %s\n", e->pid, full_path);
+    //printf("PID %d deleted file: %s\n", e->pid, full_path);
+    printf("PID %d (%s) deleted file: %s\n", e->pid, e->comm, full_path);
     return 0;
 }
 
@@ -71,4 +72,6 @@ cleanup:
     unlink_monitor_bpf__destroy(skel);
     return err != 0;
 }
+
+
 
