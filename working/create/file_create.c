@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
 #include <argp.h>
 #include <signal.h>
 #include <stdio.h>
@@ -6,6 +5,8 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 #include "file_create.h"
@@ -15,6 +16,7 @@
 #define PERF_BUFFER_TIME_MS	10
 #define PERF_POLL_TIMEOUT_MS	100
 #define MAX_EXCLUDE_PATTERNS	64  // Maximum number of exclude patterns
+#define AT_FDCWD		-100    // Special value for current working directory
 
 static volatile sig_atomic_t exiting = 0;
 
@@ -139,12 +141,87 @@ static bool matches_exclude_patterns(const char *fname)
 	return false;
 }
 
+// Get the current working directory of a process
+static char *get_process_cwd(pid_t pid)
+{
+	char path[64];
+	snprintf(path, sizeof(path), "/proc/%d/cwd", pid);
+	
+	static char cwd[PATH_MAX];
+	ssize_t len = readlink(path, cwd, sizeof(cwd) - 1);
+	if (len != -1) {
+		cwd[len] = '\0';
+		return cwd;
+	}
+	return NULL;
+}
+
+// Get the path associated with a file descriptor
+static char *get_fd_path(pid_t pid, int fd)
+{
+	char path[64];
+	if (fd == AT_FDCWD) {
+		return get_process_cwd(pid);
+	}
+	
+	snprintf(path, sizeof(path), "/proc/%d/fd/%d", pid, fd);
+	
+	static char fd_path[PATH_MAX];
+	ssize_t len = readlink(path, fd_path, sizeof(fd_path) - 1);
+	if (len != -1) {
+		fd_path[len] = '\0';
+		return fd_path;
+	}
+	return NULL;
+}
+
+// Resolve full path from dirfd and filename
+static char *resolve_full_path(pid_t pid, int dirfd, const char *fname)
+{
+	static char full_path[PATH_MAX];
+	
+	// If filename is already absolute, return it as-is
+	if (fname[0] == '/') {
+		strncpy(full_path, fname, PATH_MAX - 1);
+		full_path[PATH_MAX - 1] = '\0';
+		return full_path;
+	}
+	
+	// Get the directory path from dirfd
+	char *dir_path = get_fd_path(pid, dirfd);
+	if (!dir_path) {
+		// Fallback to just the filename if we can't resolve the directory
+		strncpy(full_path, fname, PATH_MAX - 1);
+		full_path[PATH_MAX - 1] = '\0';
+		return full_path;
+	}
+	
+	// Combine directory path and filename
+	// Ensure the combined path won't exceed PATH_MAX
+	size_t dir_len = strlen(dir_path);
+	size_t fname_len = strlen(fname);
+	
+	if (dir_len + 1 + fname_len >= PATH_MAX - 1) {
+		// Combined path would be too long, return just the filename
+		strncpy(full_path, fname, PATH_MAX - 1);
+		full_path[PATH_MAX - 1] = '\0';
+	} else {
+		// Safe to combine paths
+		memcpy(full_path, dir_path, dir_len);
+		full_path[dir_len] = '/';
+		memcpy(full_path + dir_len + 1, fname, fname_len);
+		full_path[dir_len + 1 + fname_len] = '\0';
+	}
+	return full_path;
+}
+
 void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 {
 	struct create_event *event = data;
 	struct tm *tm;
 	char ts[32];
 	time_t t;
+	char *full_path;
 
 	// Apply filters
 	if (env.pid && env.pid != event->pid)
@@ -156,22 +233,25 @@ void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 	if (env.name_filter && !strstr(event->comm, env.name_filter))
 		return;
 	
+	// Resolve the full path
+	full_path = resolve_full_path(event->pid, event->dirfd, event->fname);
+	
 	// Filter out /dev/null if requested
-	if (env.exclude_dev_null && strcmp(event->fname, "/dev/null") == 0)
+	if (env.exclude_dev_null && strcmp(full_path, "/dev/null") == 0)
 		return;
 	
 	// Filter out temporary files if requested
 	if (env.exclude_tmp_files) {
-		if (strstr(event->fname, ".tmp") || 
-		    strstr(event->fname, ".swp") ||
-		    strstr(event->fname, ".tmpfile") ||
-		    strstr(event->fname, "/.cache/") ||
-		    (strstr(event->fname, event->comm) && strstr(event->fname, "/.mozilla/")))
+		if (strstr(full_path, ".tmp") || 
+		    strstr(full_path, ".swp") ||
+		    strstr(full_path, ".tmpfile") ||
+		    strstr(full_path, "/.cache/") ||
+		    (strstr(full_path, event->comm) && strstr(full_path, "/.mozilla/")))
 			return;
 	}
 	
 	// Check custom exclude patterns
-	if (matches_exclude_patterns(event->fname))
+	if (matches_exclude_patterns(full_path))
 		return;
 
 	// Prepare timestamp
@@ -186,9 +266,9 @@ void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 	if (env.print_uid)
 		printf("%-7u ", event->uid);
 
-	// Main output
+	// Main output - now with full path
 	printf("%-6u %-16s %08o %04o %s\n",
-	       event->pid, event->comm, event->flags, event->mode, event->fname);
+	       event->pid, event->comm, event->flags, event->mode, full_path);
 }
 
 void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
@@ -274,4 +354,6 @@ cleanup:
 	file_create_bpf__destroy(obj);
 	return err != 0;
 }
+
+
 

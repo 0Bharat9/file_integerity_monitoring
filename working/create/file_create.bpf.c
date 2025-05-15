@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/bpf.h>
 #include <linux/ptrace.h>
 #include <bpf/bpf_helpers.h>
@@ -40,6 +39,7 @@ int tracepoint__syscalls__sys_enter_openat(struct syscall_trace_enter* ctx)
 	pid = (__u32)id;
 	
 	// Extract system call arguments
+	// dirfd is args[0], but we'll get the current working directory from userspace
 	fname = (const char *)ctx->args[1];  // filename is 2nd argument (args[1])
 	flags = (int)ctx->args[2];          // flags is 3rd argument (args[2])
 	
@@ -53,6 +53,7 @@ int tracepoint__syscalls__sys_enter_openat(struct syscall_trace_enter* ctx)
 	event.uid = (__u32)bpf_get_current_uid_gid();
 	event.flags = flags;
 	event.mode = (__u32)ctx->args[3];  // mode is 4th argument (args[3])
+	event.dirfd = (int)ctx->args[0];   // directory file descriptor
 	
 	// Get process name and filename
 	bpf_get_current_comm(&event.comm, sizeof(event.comm));
@@ -66,3 +67,5 @@ int tracepoint__syscalls__sys_enter_openat(struct syscall_trace_enter* ctx)
 }
 
 char _license[] SEC("license") = "GPL";
+
+

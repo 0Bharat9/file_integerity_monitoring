@@ -6,6 +6,9 @@
 
 struct event {
     unsigned int pid;
+    unsigned int tgid;
+    unsigned int uid;
+    int dfd;  // Directory file descriptor
     char comm[TASK_COMM_LEN];
     char filename[FILENAME_LEN];
 };
