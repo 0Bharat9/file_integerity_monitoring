@@ -54,7 +54,7 @@ static struct file_stats file_stats[MAX_TRACKED_FILES];
 static int file_stats_count = 0;
 
 const char *argp_program_version = "file_modify 1.0";
-const char *argp_program_bug_address = "<your-email@example.com>";
+const char *argp_program_bug_address = "<bharatexhash09@gmail.com>";
 const char argp_program_doc[] =
 "Monitor file modification events via write syscalls\n"
 "\n"

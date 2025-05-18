@@ -31,7 +31,7 @@ struct env {
 } env = {};
 
 const char *argp_program_version = "unlink_monitor 1.0";
-const char *argp_program_bug_address = "<your-email@example.com>";
+const char *argp_program_bug_address = "<bharatexhash09@gmail.com>";
 const char argp_program_doc[] =
 "Monitor file deletion events via unlinkat syscall\n"
 "\n"
