@@ -2,8 +2,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
-#include "fim.h"
-
+#include "bpf_fim.h"
 // Define file access flags if not already defined
 #ifndef O_CREAT
 #define O_CREAT		00000100
