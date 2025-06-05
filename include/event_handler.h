@@ -17,5 +17,6 @@ static bool is_editor_atomic_save(const char *fname, const char *comm, __u32 eve
 // Display functions
 void print_header(void);
 void print_configuration(void);
+void print_stats(int stats_fd);
 
 #endif /* EVENT_HANDLER_H */

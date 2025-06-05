@@ -21,6 +21,11 @@
 #endif
 
 #define MAX_FD_TRACK 4096
+#define STAT_DROPPED_EVENTS 0
+#define STAT_TOTAL_EVENTS   1
+#define STAT_CREATE_EVENTS  2
+#define STAT_SAVE_EVENTS    3
+#define STAT_DELETE_EVENTS  4
 
 // Structure for tracepoint context
 struct syscall_trace_enter {
@@ -35,7 +40,7 @@ struct syscall_trace_enter {
 // Single ring buffer for all FIM events
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 1 << 24); // 16 MB
+    __uint(max_entries, 1 << 26); // 16 MB
 } fim_events SEC(".maps");
 
 // Track file descriptors opened for writing
@@ -77,6 +82,13 @@ struct {
     __type(value, struct temp_open_info);
 } temp_open_map SEC(".maps");
 
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 5);  // Increase from 4 to 5
+    __type(key, u32);
+    __type(value, u64);
+} stats_map SEC(".maps");
+
 // Helper function to create the key from pid and fd
 static __always_inline u64 gen_pid_fd_key(u32 pid, int fd)
 {
@@ -116,7 +128,39 @@ static inline int send_fim_event(void *ctx, __u32 event_type, __u32 pid, __u32 t
                                 int flags, __u32 mode, const char *comm) {
     struct fim_event *event;
     
+    u32 total_key = STAT_TOTAL_EVENTS;
+    u64 *total_val = bpf_map_lookup_elem(&stats_map, &total_key);
+    if (total_val) {
+      (*total_val)++;
+      bpf_map_update_elem(&stats_map, &total_key, total_val, BPF_EXIST);
+    }
+    
+    u32 type_key;
+    if (event_type == EVENT_TYPE_CREATE) {
+      type_key = STAT_CREATE_EVENTS;
+    } else if (event_type == EVENT_TYPE_DELETE) {
+      type_key = STAT_DELETE_EVENTS;
+    } else {
+      type_key = STAT_SAVE_EVENTS;  // Default for SAVE events
+    }
+    u64 *type_val = bpf_map_lookup_elem(&stats_map, &type_key);
+    if (type_val) {
+      (*type_val)++;
+      bpf_map_update_elem(&stats_map, &type_key, type_val, BPF_EXIST);
+    }
+    
     event = bpf_ringbuf_reserve(&fim_events, sizeof(*event), 0);
+    if (!event) {
+        // Increment dropped events counter
+        u32 dropped_key = STAT_DROPPED_EVENTS;
+        u64 *dropped_val = bpf_map_lookup_elem(&stats_map, &dropped_key);
+        if (dropped_val) {
+            (*dropped_val)++;
+            bpf_map_update_elem(&stats_map, &dropped_key, dropped_val, BPF_EXIST);
+        }
+        return 0;
+    }
+    
     if (!event)
         return 0;
     
@@ -129,9 +173,12 @@ static inline int send_fim_event(void *ctx, __u32 event_type, __u32 pid, __u32 t
     event->dirfd = dirfd;
     event->timestamp = bpf_ktime_get_ns();
     
-    bpf_probe_read_str(&event->comm, sizeof(event->comm), comm);
-    bpf_probe_read_str(&event->filename, sizeof(event->filename), filename);
-    
+    if(bpf_probe_read_str(&event->comm, sizeof(event->comm), comm) < 0 || 
+        bpf_probe_read_str(&event->filename, sizeof(event->filename),filename)<0){
+        bpf_ringbuf_discard(event, 0);
+        return -1;
+    }
+ 
     bpf_ringbuf_submit(event, 0);
     return 0;
 }
@@ -234,7 +281,7 @@ int trace_write_enter(struct trace_event_raw_sys_enter *ctx)
     // Mark this fd as having been written to
     u64 key = gen_pid_fd_key(pid, fd);
     struct fd_info *info = bpf_map_lookup_elem(&fd_track_map, &key);
-    if (info) {
+    if (info && !info->was_written) {
         info->was_written = true;
         bpf_map_update_elem(&fd_track_map, &key, info, BPF_EXIST);
     }

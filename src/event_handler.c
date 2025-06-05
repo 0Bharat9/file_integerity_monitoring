@@ -217,6 +217,38 @@ void print_configuration()
 	printf("\n");
 }
 
+void print_stats(int stats_fd) {
+    uint32_t key;
+    uint64_t value;
+    
+    printf("=== BPF FIM Stats ===\n");
+    
+    key = 0; // STAT_DROPPED_EVENTS
+    if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
+        printf("Dropped events: %llu\n", value);
+    }
+    
+    key = 1; // STAT_TOTAL_EVENTS
+    if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
+        printf("Total events: %llu\n", value);
+    }
+    
+    key = 2; // STAT_CREATE_EVENTS
+    if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
+        printf("Create events: %llu\n", value);
+    }
+    
+    key = 3; // STAT_SAVE_EVENTS
+    if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
+        printf("Save events: %llu\n", value);
+    }
+    
+    key = 4; // STAT_DELETE_EVENTS - ADD THIS
+    if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
+        printf("Delete events: %llu\n", value);
+    }
+}
+
 int handle_event(void *ctx, void *data, size_t data_sz)
 {
 	const struct fim_event *event = data;
@@ -246,8 +278,21 @@ int handle_event(void *ctx, void *data, size_t data_sz)
 	if (event->filename[0] == '\0')
 		return 0;
 	
-	full_path = resolve_full_path(event->pid, event->dirfd, event->filename);
-	
+	full_path = resolve_full_path(event->pid, event->dirfd, event->filename);	
+  if (event->event_type == EVENT_TYPE_CREATE) {
+    if (!is_new_file_creation(full_path)) {
+        if (env.verbose) {
+            printf("SKIPPED CREATE: %s (file already exists)\n", full_path);
+        }
+        return 0;  // Skip this CREATE event
+    }
+  }
+
+  if(event->event_type == EVENT_TYPE_DELETE){
+    struct file_state *state = get_file_state(full_path);
+    if (state) state->file_exists = false;
+  }
+
 	if (env.exclude_editor_noise) {
 		if (is_editor_temp_file(full_path, event->comm) || 
 		    is_editor_atomic_save(full_path, event->comm, event->event_type)) {

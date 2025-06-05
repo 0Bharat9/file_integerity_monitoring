@@ -65,6 +65,7 @@ extern int cache_entries;
 extern FILE *log_file;
 extern struct passwd *pw;
 extern volatile sig_atomic_t exiting;
+extern int stats_fd;
 
 // BPF event structure (should match BPF program)
 struct fim_event {

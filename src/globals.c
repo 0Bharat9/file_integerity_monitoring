@@ -5,6 +5,7 @@ struct file_state *file_cache[MAX_FILE_CACHE] = {NULL};
 int  cache_entries = 0;
 FILE *log_file = NULL;
 struct passwd *pw = NULL;
+int stats_fd = -1;
 
 // Initialize env with default values
 struct env env = {

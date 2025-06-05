@@ -6,39 +6,11 @@
 #include <sys/socket.h>
 #include <ifaddrs.h>
 #include <arpa/inet.h>
+#include "system_info.h"
 
-static char system_hostname[256] = "unknown";
-static char system_ip[64] = "127.0.0.1";
+//static char system_hostname[256] = "unknown";
+//static char system_ip[64] = "127.0.0.1";
 static bool system_info_initialized = false;
-
-static void initialize_system_info_internal(void) {
-    if (system_info_initialized) return;
-    
-    // Get hostname
-    if (gethostname(system_hostname, sizeof(system_hostname)) != 0) {
-        strncpy(system_hostname, "unknown", sizeof(system_hostname) - 1);
-    }
-    system_hostname[sizeof(system_hostname) - 1] = '\0';
-    
-    // Simple IP detection - get first non-loopback IP
-    struct ifaddrs *ifaddrs_ptr = NULL;
-    if (getifaddrs(&ifaddrs_ptr) == 0) {
-        for (struct ifaddrs *ifa = ifaddrs_ptr; ifa != NULL; ifa = ifa->ifa_next) {
-            if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
-                struct sockaddr_in *addr_in = (struct sockaddr_in *)ifa->ifa_addr;
-                char *ip = inet_ntoa(addr_in->sin_addr);
-                if (ip && strcmp(ip, "127.0.0.1") != 0) {
-                    strncpy(system_ip, ip, sizeof(system_ip) - 1);
-                    system_ip[sizeof(system_ip) - 1] = '\0';
-                    break;
-                }
-            }
-        }
-        freeifaddrs(ifaddrs_ptr);
-    }
-    
-    system_info_initialized = true;
-}
 
 // Initialize logging
 bool init_logging() {
@@ -77,7 +49,6 @@ static const char* get_file_event_type(__u32 event_type) {
 
 // Log event to JSON file - REMOVED static
 void log_event_json(const struct fim_event *event, const char *full_path) {
-	initialize_system_info_internal();
     if (!env.enable_logging || !log_file) {
 		return;
 	}

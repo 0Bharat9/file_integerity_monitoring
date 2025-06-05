@@ -225,8 +225,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "Warning: Logging initialization failed\n");
     }
 	
-  skel = fim_bpf__open_and_load();
-	
+  skel = fim_bpf__open_and_load();	
   if (!skel) {
 		fprintf(stderr, "Failed to open and load BPF skeleton\n");
 		return 1;
@@ -237,6 +236,12 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Failed to attach BPF programs\n");
 		goto cleanup;
 	}
+  
+  stats_fd = bpf_map__fd(skel->maps.stats_map);
+  if (stats_fd < 0) {
+    fprintf(stderr, "Warning: Could not get stats map fd\n");
+    goto cleanup;
+  }
 
 	rb = ring_buffer__new(bpf_map__fd(skel->maps.fim_events), handle_event, NULL, NULL);
 	if (!rb) {
@@ -265,7 +270,10 @@ int main(int argc, char **argv)
 	}
 
 cleanup:
-	ring_buffer__free(rb);
+	if (stats_fd >= 0) {
+        print_stats(stats_fd);
+  }
+  ring_buffer__free(rb);
 	fim_bpf__destroy(skel);
   cleanup_logging();      // ADD: Clean up logging
   cleanup_file_cache();   // ADD: Clean up file cache

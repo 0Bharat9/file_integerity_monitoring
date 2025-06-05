@@ -49,7 +49,7 @@ static bool calculate_file_hash(const char *filepath, unsigned char *hash) {
 }
 
 // Get or create file state entry
-static struct file_state *get_file_state(const char *path) {
+struct file_state *get_file_state(const char *path) {
 	unsigned int idx = hash_path(path);
 	struct file_state *entry = file_cache[idx];
 	
@@ -69,6 +69,7 @@ static struct file_state *get_file_state(const char *path) {
 			entry->path[PATH_MAX - 1] = '\0';
 			memset(entry->hash, 0, HASH_SIZE);
 			entry->last_modified = 0;
+      entry->file_exists = false;
 			entry->next = file_cache[idx];
 			file_cache[idx] = entry;
 			cache_entries++;
@@ -76,6 +77,20 @@ static struct file_state *get_file_state(const char *path) {
 	}
 	
 	return entry;
+}
+
+bool is_new_file_creation(const char *filepath) {
+    struct file_state *state = get_file_state(filepath);
+    if (!state) {
+        return true;
+    }
+    
+    if (state->file_exists) {
+        return false;  // Already exists in our tracking
+    }
+    
+    state->file_exists = true;  // Mark as existing
+    return true;  // This is new
 }
 
 // Check if file content has actually changed
