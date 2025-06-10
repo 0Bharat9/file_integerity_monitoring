@@ -40,7 +40,7 @@ struct syscall_trace_enter {
 // Single ring buffer for all FIM events
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 1 << 26); // 16 MB
+    __uint(max_entries, 1<<26); // 64 MB
 } fim_events SEC(".maps");
 
 // Track file descriptors opened for writing
@@ -48,7 +48,6 @@ struct fd_info {
     char pathname[BPF_PATH_MAX];
     u32 flags;
     u64 timestamp;
-    bool was_written;  // Track if file was actually written to
 };
 
 struct {
@@ -258,7 +257,6 @@ int trace_exit_openat(struct trace_event_raw_sys_exit *ctx)
     struct fd_info info = {};
     info.flags = temp_info->flags;
     info.timestamp = temp_info->timestamp;
-    info.was_written = false;  // Initialize as not written
     __builtin_memcpy(info.pathname, temp_info->pathname, BPF_PATH_MAX);
     
     // Store with the proper key (pid + fd)
@@ -266,121 +264,6 @@ int trace_exit_openat(struct trace_event_raw_sys_exit *ctx)
     bpf_map_update_elem(&fd_track_map, &key, &info, BPF_ANY);
     
     return 0;
-}
-
-// ===== TRACK WRITE OPERATIONS (to know if file was modified) =====
-
-// Track any write operation to mark file as modified
-SEC("tp/syscalls/sys_enter_write")
-int trace_write_enter(struct trace_event_raw_sys_enter *ctx)
-{
-    u64 id = bpf_get_current_pid_tgid();
-    u32 pid = id >> 32;
-    int fd = ctx->args[0];
-    
-    // Mark this fd as having been written to
-    u64 key = gen_pid_fd_key(pid, fd);
-    struct fd_info *info = bpf_map_lookup_elem(&fd_track_map, &key);
-    if (info && !info->was_written) {
-        info->was_written = true;
-        bpf_map_update_elem(&fd_track_map, &key, info, BPF_EXIST);
-    }
-    
-    return 0;
-}
-
-// Track pwrite operations
-SEC("tp/syscalls/sys_enter_pwrite64")
-int trace_pwrite_enter(struct trace_event_raw_sys_enter *ctx)
-{
-    u64 id = bpf_get_current_pid_tgid();
-    u32 pid = id >> 32;
-    int fd = ctx->args[0];
-    
-    u64 key = gen_pid_fd_key(pid, fd);
-    struct fd_info *info = bpf_map_lookup_elem(&fd_track_map, &key);
-    if (info) {
-        info->was_written = true;
-        bpf_map_update_elem(&fd_track_map, &key, info, BPF_EXIST);
-    }
-    
-    return 0;
-}
-
-// Track writev operations
-SEC("tp/syscalls/sys_enter_writev")
-int trace_writev_enter(struct trace_event_raw_sys_enter *ctx)
-{
-    u64 id = bpf_get_current_pid_tgid();
-    u32 pid = id >> 32;
-    int fd = ctx->args[0];
-    
-    u64 key = gen_pid_fd_key(pid, fd);
-    struct fd_info *info = bpf_map_lookup_elem(&fd_track_map, &key);
-    if (info) {
-        info->was_written = true;
-        bpf_map_update_elem(&fd_track_map, &key, info, BPF_EXIST);
-    }
-    
-    return 0;
-}
-
-// ===== FILE SAVE DETECTION =====
-
-// Monitor fsync - indicates file save
-SEC("tp/syscalls/sys_enter_fsync")
-int trace_fsync_enter(struct trace_event_raw_sys_enter *ctx)
-{
-    u64 id = bpf_get_current_pid_tgid();
-    u32 pid = id >> 32;
-    u32 tgid = id & 0xFFFFFFFF;
-    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
-    int fd = ctx->args[0];
-    char comm[TASK_COMM_LEN];
-    
-    bpf_get_current_comm(&comm, sizeof(comm));
-    
-    // Check if we're tracking this fd
-    u64 key = gen_pid_fd_key(pid, fd);
-    struct fd_info *info = bpf_map_lookup_elem(&fd_track_map, &key);
-    if (!info || !info->was_written)
-        return 0;
-    
-    // Rate limiting check
-    if (should_skip_event(pid, info->pathname)) {
-        return 0;
-    }
-    
-    return send_fim_event(ctx, EVENT_TYPE_SAVE, pid, tgid, uid, info->pathname, 
-                         -1, 0, 0, comm);
-}
-
-// Monitor fdatasync - also indicates file save
-SEC("tp/syscalls/sys_enter_fdatasync")
-int trace_fdatasync_enter(struct trace_event_raw_sys_enter *ctx)
-{
-    u64 id = bpf_get_current_pid_tgid();
-    u32 pid = id >> 32;
-    u32 tgid = id & 0xFFFFFFFF;
-    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
-    int fd = ctx->args[0];
-    char comm[TASK_COMM_LEN];
-    
-    bpf_get_current_comm(&comm, sizeof(comm));
-    
-    // Check if we're tracking this fd
-    u64 key = gen_pid_fd_key(pid, fd);
-    struct fd_info *info = bpf_map_lookup_elem(&fd_track_map, &key);
-    if (!info || !info->was_written)
-        return 0;
-    
-    // Rate limiting check
-    if (should_skip_event(pid, info->pathname)) {
-        return 0;
-    }
-    
-    return send_fim_event(ctx, EVENT_TYPE_SAVE, pid, tgid, uid, info->pathname, 
-                         -1, 0, 0, comm);
 }
 
 // Monitor close operations - many programs save on close
@@ -399,8 +282,8 @@ int trace_close_enter(struct trace_event_raw_sys_enter *ctx)
     u64 key = gen_pid_fd_key(pid, fd);
     struct fd_info *info = bpf_map_lookup_elem(&fd_track_map, &key);
     
-    // Only generate SAVE event if file was actually written to
-    if (info && info->was_written) {
+    // Generate SAVE event for any file that was opened with write flags
+    if (info) {
         // Rate limiting check
         if (!should_skip_event(pid, info->pathname)) {
             send_fim_event(ctx, EVENT_TYPE_SAVE, pid, tgid, uid, info->pathname, 
@@ -413,7 +296,6 @@ int trace_close_enter(struct trace_event_raw_sys_enter *ctx)
     
     return 0;
 }
-
 // ===== FILE DELETION MONITORING =====
 
 // Trace file deletion events via do_unlinkat
@@ -441,38 +323,6 @@ int BPF_KPROBE(do_unlinkat, int dfd, struct filename *name)
     
     // Send delete event
     send_fim_event(ctx, EVENT_TYPE_DELETE, pid, tgid, uid, fname, dfd, 0, 0, comm);
-    
-    return 0;
-}
-
-// ===== CLEANUP OPERATIONS =====
-
-// Cleanup on dup2 operations (fd reassignment)
-SEC("tp/syscalls/sys_enter_dup2")
-int trace_dup2_enter(struct trace_event_raw_sys_enter *ctx)
-{
-    u64 id = bpf_get_current_pid_tgid();
-    u32 pid = id >> 32;
-    int newfd = ctx->args[1];
-    
-    // Clean up the target fd if it was being tracked
-    u64 key = gen_pid_fd_key(pid, newfd);
-    bpf_map_delete_elem(&fd_track_map, &key);
-    
-    return 0;
-}
-
-// Cleanup on dup3 operations (fd reassignment with flags)
-SEC("tp/syscalls/sys_enter_dup3")
-int trace_dup3_enter(struct trace_event_raw_sys_enter *ctx)
-{
-    u64 id = bpf_get_current_pid_tgid();
-    u32 pid = id >> 32;
-    int newfd = ctx->args[1];
-    
-    // Clean up the target fd if it was being tracked
-    u64 key = gen_pid_fd_key(pid, newfd);
-    bpf_map_delete_elem(&fd_track_map, &key);
     
     return 0;
 }
