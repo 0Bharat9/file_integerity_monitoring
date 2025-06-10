@@ -16,6 +16,7 @@ const char argp_program_doc[] =
 "USAGE: fim [-h] [-v] [-T] [-U] [-F] [-p PID] [-u UID] [--no-dev-null] [--no-tmp]\n"
 "           [--no-editor-filter] [--no-content-check] [--show-unchanged] [--no-log]\n"
 "           [-n NAME] [-e PATTERN] [-w PATTERN] [--strict] [--create-only] [--delete-only] [--write-only]\n"
+"           [--rename-only] [--symlink-only] [--time-change-only]\n"
 "\n"
 "EXAMPLES:\n"
 "    ./fim                       # content-aware monitoring with JSON logging\n"
@@ -43,9 +44,15 @@ static const struct argp_option opts[] = {
     { "create-only", 1004, NULL, 0, "Monitor only file creation events", 0 },
     { "delete-only", 1005, NULL, 0, "Monitor only file deletion events", 0 },
     { "write-only", 1006, NULL, 0, "Monitor only file write events", 0 },
+    { "rename-only", 1017, NULL, 0, "Monitor only file rename events", 0 },
+    { "symlink-only", 1018, NULL, 0, "Monitor only file symlink events", 0 },
+    { "time-only", 1019, NULL, 0, "Monitor only file time_stamp_change events", 0 },
     { "no-create", 1007, NULL, 0, "Disable monitoring of file creation events", 0 },
     { "no-delete", 1008, NULL, 0, "Disable monitoring of file deletion events", 0 },
     { "no-write", 1009, NULL, 0, "Disable monitoring of file write events", 0 },
+    { "no-rename", 1014, NULL, 0, "Disable monitoring of file rename events", 0 },
+    { "no-symlink", 1015, NULL, 0, "Disable monitoring of file symlink events", 0 },
+    { "no-time-change", 1016, NULL, 0, "Disable monitoring of file timestamp change events", 0 },
     { "name", 'n', "NAME", 0, "Only trace processes containing NAME", 0 },
     { "exclude", 'e', "PATTERN", 0, "Exclude files containing PATTERN", 0 },
     { "watch", 'w', "PATTERN", 0, "Watch only files containing PATTERN (requires --strict)", 0 },
@@ -143,18 +150,48 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.monitor_create = true;
 		env.monitor_delete = false;
 		env.monitor_write = false;
+    env.monitor_rename = false;
+    env.monitor_symlink = false;
+    env.monitor_time_change = false;
 		break;
 	case 1005:  // --delete-only
 		env.monitor_create = false;
 		env.monitor_delete = true;
 		env.monitor_write = false;
-		break;
+    env.monitor_rename = false;
+    env.monitor_symlink = false;
+    env.monitor_time_change = false;
+    break;
 	case 1006:  // --write-only
 		env.monitor_create = false;
 		env.monitor_delete = false;
 		env.monitor_write = true;
-		break;
-	case 1007:  // --no-create
+		env.monitor_rename = false;
+    env.monitor_symlink = false;
+    env.monitor_time_change = false;
+    break;
+  case 1017:
+    env.monitor_create = false;
+		env.monitor_delete = false;
+		env.monitor_write = false;
+		env.monitor_rename = true;
+    env.monitor_symlink = false;
+    env.monitor_time_change = false;
+	case 1018:
+    env.monitor_create = false;
+		env.monitor_delete = false;
+		env.monitor_write = false;
+		env.monitor_rename = false;
+    env.monitor_symlink = true;
+    env.monitor_time_change = false;
+  case 1019:
+    env.monitor_create = false;
+		env.monitor_delete = false;
+		env.monitor_write = false;
+		env.monitor_rename = false;
+    env.monitor_symlink = false;
+    env.monitor_time_change = true;
+  case 1007:  // --no-create
 		env.monitor_create = false;
 		break;
 	case 1008:  // --no-delete
@@ -162,6 +199,15 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		break;
 	case 1009:  // --no-write
 		env.monitor_write = false;
+		break;
+  case 1014:  // --no-write
+		env.monitor_rename = false;
+		break;
+	case 1015:  // --no-write
+		env.monitor_symlink = false;
+		break;
+	case 1016:  // --no-write
+		env.monitor_time_change = false;
 		break;
 	case 'n':
 		env.name_filter = arg;

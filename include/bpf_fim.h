@@ -18,6 +18,9 @@
 #define EVENT_TYPE_CREATE      1
 #define EVENT_TYPE_DELETE      2
 #define EVENT_TYPE_SAVE        3
+#define EVENT_TYPE_RENAME      4
+#define EVENT_TYPE_SYMLINK     5
+#define EVENT_TYPE_TIMESTAMP   6
 
 #define BPF_PATH_MAX 256
 
@@ -36,6 +39,8 @@ struct fim_event {
     __u64 timestamp;   // Event timestamp (nanoseconds)
     char comm[TASK_COMM_LEN];
     char filename[FILENAME_LEN];
+    char old_filename[BPF_PATH_MAX];  // For rename operations
+    char target_path[BPF_PATH_MAX];   // For symlink targets
 };
 
 

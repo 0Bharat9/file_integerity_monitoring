@@ -26,6 +26,9 @@
 #define STAT_CREATE_EVENTS  2
 #define STAT_SAVE_EVENTS    3
 #define STAT_DELETE_EVENTS  4
+#define STAT_RENAME_EVENTS    5
+#define STAT_SYMLINK_EVENTS   6
+#define STAT_TIMESTAMP_EVENTS 7
 
 // Structure for tracepoint context
 struct syscall_trace_enter {
@@ -83,7 +86,7 @@ struct {
 
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 5);  // Increase from 4 to 5
+    __uint(max_entries, 8);  // Increase from 4 to 5
     __type(key, u32);
     __type(value, u64);
 } stats_map SEC(".maps");
@@ -139,8 +142,14 @@ static inline int send_fim_event(void *ctx, __u32 event_type, __u32 pid, __u32 t
       type_key = STAT_CREATE_EVENTS;
     } else if (event_type == EVENT_TYPE_DELETE) {
       type_key = STAT_DELETE_EVENTS;
-    } else {
-      type_key = STAT_SAVE_EVENTS;  // Default for SAVE events
+    }else if (event_type == EVENT_TYPE_RENAME) {
+        type_key = STAT_RENAME_EVENTS;
+    }else if (event_type == EVENT_TYPE_SYMLINK) {
+        type_key = STAT_SYMLINK_EVENTS;
+    }else if (event_type == EVENT_TYPE_TIMESTAMP) {
+        type_key = STAT_TIMESTAMP_EVENTS;
+    }else {
+        type_key = STAT_SAVE_EVENTS;  // Default for SAVE events
     }
     u64 *type_val = bpf_map_lookup_elem(&stats_map, &type_key);
     if (type_val) {
@@ -324,6 +333,125 @@ int BPF_KPROBE(do_unlinkat, int dfd, struct filename *name)
     // Send delete event
     send_fim_event(ctx, EVENT_TYPE_DELETE, pid, tgid, uid, fname, dfd, 0, 0, comm);
     
+    return 0;
+}
+
+// ===== TIMESTAMP MANIPULATION DETECTION =====
+SEC("tp/syscalls/sys_enter_utimes")
+int trace_utimes_enter(struct syscall_trace_enter *ctx)
+{
+    u64 id = bpf_get_current_pid_tgid();
+    u32 pid = id >> 32;
+    u32 tgid = id & 0xFFFFFFFF;
+    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
+    const char *filename = (const char *)ctx->args[0];
+    char comm[TASK_COMM_LEN];
+    
+    bpf_get_current_comm(&comm, sizeof(comm));
+    
+    send_fim_event(ctx, EVENT_TYPE_TIMESTAMP, pid, tgid, uid, filename, 
+                  -1, 0, 0, comm);
+    return 0;
+}
+
+SEC("tp/syscalls/sys_enter_utimensat")
+int trace_utimensat_enter(struct syscall_trace_enter *ctx)
+{
+    u64 id = bpf_get_current_pid_tgid();
+    u32 pid = id >> 32;
+    u32 tgid = id & 0xFFFFFFFF;
+    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
+    int dirfd = (int)ctx->args[0];
+    const char *filename = (const char *)ctx->args[1];
+    char comm[TASK_COMM_LEN];
+    
+    bpf_get_current_comm(&comm, sizeof(comm));
+    
+    send_fim_event(ctx, EVENT_TYPE_TIMESTAMP, pid, tgid, uid, filename, 
+                  dirfd, 0, 0, comm);
+    return 0;
+}
+
+
+// ===== FILE RENAME/MOVE DETECTION =====
+SEC("tp/syscalls/sys_enter_renameat2")
+int trace_renameat2_enter(struct syscall_trace_enter *ctx)
+{
+    // Same logic as renameat but with flags parameter
+    u64 id = bpf_get_current_pid_tgid();
+    u32 pid = id >> 32;
+    u32 tgid = id & 0xFFFFFFFF;
+    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
+    int olddirfd = (int)ctx->args[0];
+    const char *oldpath = (const char *)ctx->args[1];
+    int newdirfd = (int)ctx->args[2];
+    const char *newpath = (const char *)ctx->args[3];
+    unsigned int flags = (unsigned int)ctx->args[4];
+    char comm[TASK_COMM_LEN];
+    
+    bpf_get_current_comm(&comm, sizeof(comm));
+    
+    send_fim_event(ctx, EVENT_TYPE_RENAME, pid, tgid, uid, oldpath, 
+                  olddirfd, flags, 0, comm);
+    return 0;
+}
+
+SEC("tp/syscalls/sys_enter_rename")
+int trace_rename_enter(struct syscall_trace_enter *ctx)
+{
+    u64 id = bpf_get_current_pid_tgid();
+    u32 pid = id >> 32;
+    u32 tgid = id & 0xFFFFFFFF;
+    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
+    const char *oldpath = (const char *)ctx->args[0];
+    const char *newpath = (const char *)ctx->args[1];
+    char comm[TASK_COMM_LEN];
+    
+    bpf_get_current_comm(&comm, sizeof(comm));
+    
+    // Send event for old path (file being moved)
+    send_fim_event(ctx, EVENT_TYPE_RENAME, pid, tgid, uid, oldpath, 
+                  -1, 0, 0, comm);
+    return 0;
+}
+
+// ===== SYMLINK CREATION DETECTION =====
+SEC("tp/syscalls/sys_enter_symlink")
+int trace_symlink_enter(struct syscall_trace_enter *ctx)
+{
+    u64 id = bpf_get_current_pid_tgid();
+    u32 pid = id >> 32;
+    u32 tgid = id & 0xFFFFFFFF;
+    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
+    const char *target = (const char *)ctx->args[0];
+    const char *linkpath = (const char *)ctx->args[1];
+    char comm[TASK_COMM_LEN];
+    
+    bpf_get_current_comm(&comm, sizeof(comm));
+    
+    // Send event for the symlink being created
+    send_fim_event(ctx, EVENT_TYPE_SYMLINK, pid, tgid, uid, linkpath, 
+                  -1, 0, 0, comm);
+    return 0;
+}
+
+SEC("tp/syscalls/sys_enter_symlinkat")
+int trace_symlinkat_enter(struct syscall_trace_enter *ctx)
+{
+    u64 id = bpf_get_current_pid_tgid();
+    u32 pid = id >> 32;
+    u32 tgid = id & 0xFFFFFFFF;
+    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
+    const char *target = (const char *)ctx->args[0];
+    int newdirfd = (int)ctx->args[1];
+    const char *linkpath = (const char *)ctx->args[2];
+    char comm[TASK_COMM_LEN];
+    
+    bpf_get_current_comm(&comm, sizeof(comm));
+    
+    // Send event for the symlink being created
+    send_fim_event(ctx, EVENT_TYPE_SYMLINK, pid, tgid, uid, linkpath, 
+                  newdirfd, 0, 0, comm);
     return 0;
 }
 

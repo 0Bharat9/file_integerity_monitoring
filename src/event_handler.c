@@ -113,7 +113,13 @@ static const char *get_event_type_str(__u32 event_type)
 		return "DELETE";
 	case EVENT_TYPE_SAVE:
 		return "WRITE";
-	default:
+  case EVENT_TYPE_RENAME:
+    return "MOVE/RENAME";
+  case EVENT_TYPE_SYMLINK:
+    return "SYMLINK";
+    case EVENT_TYPE_TIMESTAMP:
+    return "TIME_CHANGE";
+  default:
 		return "UNKNOWN";
 	}
 }
@@ -164,6 +170,21 @@ void print_configuration()
 	if (env.monitor_write) {
 		if (event_count > 0) printf(", ");
 		printf("WRITE");
+		event_count++;
+	}
+  if (env.monitor_rename) {
+		if (event_count > 0) printf(", ");
+		printf("RENAME");
+		event_count++;
+	}
+  if (env.monitor_symlink) {
+		if (event_count > 0) printf(", ");
+		printf("SYMLINK");
+		event_count++;
+	}
+	if (env.monitor_time_change) {
+		if (event_count > 0) printf(", ");
+		printf("TIME_CHANGE");
 		event_count++;
 	}
 	printf(" events\n");
@@ -247,6 +268,22 @@ void print_stats(int stats_fd) {
     if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
         printf("Delete events: %llu\n", value);
     }
+    
+    key = 5; // STAT_CREATE_EVENTS
+    if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
+        printf("Rename events: %llu\n", value);
+    }
+    
+    key = 6; // STAT_SAVE_EVENTS
+    if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
+        printf("Symlink events: %llu\n", value);
+    }
+    
+    key = 7; // STAT_DELETE_EVENTS - ADD THIS
+    if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
+        printf("Timestamp_change events: %llu\n", value);
+    }
+    
 }
 
 int handle_event(void *ctx, void *data, size_t data_sz)
@@ -265,8 +302,14 @@ int handle_event(void *ctx, void *data, size_t data_sz)
 		return 0;
 	if (event->event_type == EVENT_TYPE_SAVE && !env.monitor_write)
 		return 0;
-
-	// Apply filters
+  if (event->event_type == EVENT_TYPE_RENAME && !env.monitor_rename)
+		return 0;
+	if (event->event_type == EVENT_TYPE_SYMLINK && !env.monitor_symlink)
+		return 0;
+	if (event->event_type == EVENT_TYPE_TIMESTAMP && !env.monitor_time_change)
+		return 0;
+	
+  // Apply filters
 	if (env.pid && env.pid != event->pid)
 		return 0;
 	if (env.uid && env.uid != event->uid)

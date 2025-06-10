@@ -33,6 +33,9 @@
 #define EVENT_TYPE_CREATE      1
 #define EVENT_TYPE_DELETE      2
 #define EVENT_TYPE_SAVE        3
+#define EVENT_TYPE_RENAME      4
+#define EVENT_TYPE_SYMLINK     5
+#define EVENT_TYPE_TIMESTAMP   6
 
 // Global environment configuration
 struct env {
@@ -46,6 +49,9 @@ struct env {
     bool monitor_create;
     bool monitor_delete;
     bool monitor_write;
+    bool monitor_rename;
+    bool monitor_symlink;
+    bool monitor_time_change;
     bool show_flags;
     bool content_aware;
     bool ignore_unchanged;
