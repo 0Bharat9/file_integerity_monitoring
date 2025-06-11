@@ -117,8 +117,12 @@ static const char *get_event_type_str(__u32 event_type)
     return "MOVE/RENAME";
   case EVENT_TYPE_SYMLINK:
     return "SYMLINK";
-    case EVENT_TYPE_TIMESTAMP:
+  case EVENT_TYPE_TIMESTAMP:
     return "TIME_CHANGE";
+  case EVENT_TYPE_CHOWN:
+    return "CHOWN";
+  case EVENT_TYPE_CHMOD:
+    return "CHMOD";
   default:
 		return "UNKNOWN";
 	}
@@ -187,7 +191,17 @@ void print_configuration()
 		printf("TIME_CHANGE");
 		event_count++;
 	}
-	printf(" events\n");
+  if (env.monitor_chown) {
+		if (event_count > 0) printf(", ");
+		printf("CHOWN");
+		event_count++;
+	}
+	if (env.monitor_chmod) {
+		if (event_count > 0) printf(", ");
+		printf("CHMOD");
+		event_count++;
+	}
+  printf(" events\n");
 	
 	// NEW: Content awareness status
 	if (env.content_aware) {
@@ -269,21 +283,30 @@ void print_stats(int stats_fd) {
         printf("Delete events: %llu\n", value);
     }
     
-    key = 5; // STAT_CREATE_EVENTS
+    key = 5; // STAT_RENAME_EVENTS
     if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
         printf("Rename events: %llu\n", value);
     }
     
-    key = 6; // STAT_SAVE_EVENTS
+    key = 6; // STAT_SYMLINK_EVENTS
     if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
         printf("Symlink events: %llu\n", value);
     }
     
-    key = 7; // STAT_DELETE_EVENTS - ADD THIS
+    key = 7; // STAT_TIMECHANGE_EVENTS - ADD THIS
     if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
         printf("Timestamp_change events: %llu\n", value);
     }
     
+    key = 8; // STAT_CHOWN_EVENTS
+    if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
+        printf("chown events: %llu\n", value);
+    }
+    
+    key = 9; // STAT_CHMOD_EVENTS - ADD THIS
+    if (bpf_map_lookup_elem(stats_fd, &key, &value) == 0) {
+        printf("chmod events: %llu\n", value);
+    }
 }
 
 int handle_event(void *ctx, void *data, size_t data_sz)
@@ -308,7 +331,11 @@ int handle_event(void *ctx, void *data, size_t data_sz)
 		return 0;
 	if (event->event_type == EVENT_TYPE_TIMESTAMP && !env.monitor_time_change)
 		return 0;
-	
+	if (event->event_type == EVENT_TYPE_CHOWN && !env.monitor_chown)
+		return 0;
+	if (event->event_type == EVENT_TYPE_CHMOD && !env.monitor_chmod)
+		return 0;
+  
   // Apply filters
 	if (env.pid && env.pid != event->pid)
 		return 0;
@@ -374,16 +401,15 @@ int handle_event(void *ctx, void *data, size_t data_sz)
 	}
   
   log_event_json(event, full_path);
-	
-  if (event->event_type != EVENT_TYPE_SAVE) {
-		if (strstr(event->comm, "systemd") ||
-		    strstr(event->comm, "kworker") ||
-		    strstr(event->comm, "ksoftirqd") ||
-		    strstr(event->comm, "migration") ||
-		    strstr(event->comm, "rcu_") ||
-		    strstr(event->comm, "watchdog"))
-			return 0;
-	}
+  if (event->event_type == EVENT_TYPE_CREATE || event->event_type == EVENT_TYPE_DELETE) {
+    if (strstr(event->comm, "systemd") ||
+        strstr(event->comm, "kworker") ||
+        strstr(event->comm, "ksoftirqd") ||
+        strstr(event->comm, "migration") ||
+        strstr(event->comm, "rcu_") ||
+        strstr(event->comm, "watchdog"))
+        return 0;
+  }	
 
 	// Prepare timestamp
 	if (env.timestamp) {

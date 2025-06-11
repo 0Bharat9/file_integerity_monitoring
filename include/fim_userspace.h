@@ -36,6 +36,8 @@
 #define EVENT_TYPE_RENAME      4
 #define EVENT_TYPE_SYMLINK     5
 #define EVENT_TYPE_TIMESTAMP   6
+#define EVENT_TYPE_CHOWN       7
+#define EVENT_TYPE_CHMOD       8
 
 // Global environment configuration
 struct env {
@@ -52,6 +54,8 @@ struct env {
     bool monitor_rename;
     bool monitor_symlink;
     bool monitor_time_change;
+    bool monitor_chown;
+    bool monitor_chmod;
     bool show_flags;
     bool content_aware;
     bool ignore_unchanged;

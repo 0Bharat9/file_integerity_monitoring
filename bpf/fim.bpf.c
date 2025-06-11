@@ -29,6 +29,8 @@
 #define STAT_RENAME_EVENTS    5
 #define STAT_SYMLINK_EVENTS   6
 #define STAT_TIMESTAMP_EVENTS 7
+#define STAT_CHOWN_EVENTS     8
+#define STAT_CHMOD_EVENTS     9
 
 // Structure for tracepoint context
 struct syscall_trace_enter {
@@ -38,6 +40,14 @@ struct syscall_trace_enter {
 	int common_pid;
 	int nr;
 	unsigned long args[6];
+};
+
+struct trace_event_raw_sys_enter_fchmodat {
+    struct trace_entry ent;
+    int __syscall_nr;
+    int dfd;
+    const char *filename;
+    umode_t mode;
 };
 
 // Single ring buffer for all FIM events
@@ -86,7 +96,7 @@ struct {
 
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 8);  // Increase from 4 to 5
+    __uint(max_entries, 10);
     __type(key, u32);
     __type(value, u64);
 } stats_map SEC(".maps");
@@ -139,17 +149,21 @@ static inline int send_fim_event(void *ctx, __u32 event_type, __u32 pid, __u32 t
     
     u32 type_key;
     if (event_type == EVENT_TYPE_CREATE) {
-      type_key = STAT_CREATE_EVENTS;
-    } else if (event_type == EVENT_TYPE_DELETE) {
-      type_key = STAT_DELETE_EVENTS;
+        type_key = STAT_CREATE_EVENTS;
+    }else if (event_type == EVENT_TYPE_DELETE) {
+        type_key = STAT_DELETE_EVENTS;
+    }else if (event_type == EVENT_TYPE_SAVE){
+        type_key = STAT_SAVE_EVENTS;
     }else if (event_type == EVENT_TYPE_RENAME) {
         type_key = STAT_RENAME_EVENTS;
     }else if (event_type == EVENT_TYPE_SYMLINK) {
         type_key = STAT_SYMLINK_EVENTS;
     }else if (event_type == EVENT_TYPE_TIMESTAMP) {
         type_key = STAT_TIMESTAMP_EVENTS;
-    }else {
-        type_key = STAT_SAVE_EVENTS;  // Default for SAVE events
+    }else if (event_type == EVENT_TYPE_CHOWN){
+        type_key = STAT_CHOWN_EVENTS;
+    }else{
+        type_key = STAT_CHMOD_EVENTS;
     }
     u64 *type_val = bpf_map_lookup_elem(&stats_map, &type_key);
     if (type_val) {
@@ -452,6 +466,51 @@ int trace_symlinkat_enter(struct syscall_trace_enter *ctx)
     // Send event for the symlink being created
     send_fim_event(ctx, EVENT_TYPE_SYMLINK, pid, tgid, uid, linkpath, 
                   newdirfd, 0, 0, comm);
+    return 0;
+}
+
+SEC("tp/syscalls/sys_enter_fchownat")
+int trace_chown_enter(struct syscall_trace_enter *ctx)
+{
+    u64 id = bpf_get_current_pid_tgid();
+    u32 pid = id >> 32;
+    u32 tgid = id & 0xFFFFFFFF;
+    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
+    
+    int dirfd = (int)ctx->args[0];
+    const char *pathname = (const char *)ctx->args[1];
+    uid_t owner = (uid_t)ctx->args[2];
+    gid_t group = (gid_t)ctx->args[3];
+    int flags = (int)ctx->args[4];
+    
+    char comm[TASK_COMM_LEN];
+    bpf_get_current_comm(&comm, sizeof(comm));
+    
+    // Send event for the chown operation
+    send_fim_event(ctx, EVENT_TYPE_CHOWN, pid, tgid, uid, pathname, 
+                  dirfd, owner, group, comm);
+    return 0;
+}
+
+SEC("tp/syscalls/sys_enter_fchmodat")
+int trace_chmod_enter(struct trace_event_raw_sys_enter_fchmodat *ctx)
+{
+    u64 id = bpf_get_current_pid_tgid();
+    u32 pid = id >> 32;
+    u32 tgid = id & 0xFFFFFFFF;
+    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
+    
+    int dirfd = ctx->dfd;
+    const char *pathname = ctx->filename;
+    umode_t mode = ctx->mode;
+    int flags = 0;  // fchmodat doesn't have flags in the tracepoint
+    
+    char comm[TASK_COMM_LEN];
+    bpf_get_current_comm(&comm, sizeof(comm));
+    
+    // Send event - userspace receives the same fim_event structure
+    send_fim_event(ctx, EVENT_TYPE_CHMOD, pid, tgid, uid, pathname, 
+                  dirfd, flags, mode, comm);
     return 0;
 }
 

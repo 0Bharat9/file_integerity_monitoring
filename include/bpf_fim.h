@@ -21,9 +21,10 @@
 #define EVENT_TYPE_RENAME      4
 #define EVENT_TYPE_SYMLINK     5
 #define EVENT_TYPE_TIMESTAMP   6
+#define EVENT_TYPE_CHOWN       7
+#define EVENT_TYPE_CHMOD       8
 
 #define BPF_PATH_MAX 256
-
 #define TASK_COMM_LEN 16
 #define FILENAME_LEN 256
 // BPF event structure (should match userspace)
