@@ -28,20 +28,19 @@
 #define TASK_COMM_LEN 16
 #define FILENAME_LEN 256
 // BPF event structure (should match userspace)
-
 struct fim_event {
     __u32 pid;
     __u32 tgid;
     __u32 uid;
-    __u32 event_type;  // CREATE, DELETE, or SAVE
-    int flags;         // For create events (openat flags)
-    __u32 mode;        // For create events (file mode)
-    int dirfd;         // Directory file descriptor
-    __u64 timestamp;   // Event timestamp (nanoseconds)
+    __u32 event_type;
+    __u32 flags;
+    __u32 mode;
+    int dirfd;
+    int new_dirfd;  // Add this for dual-path operations
+    __u64 timestamp;
     char comm[TASK_COMM_LEN];
-    char filename[FILENAME_LEN];
-    char old_filename[BPF_PATH_MAX];  // For rename operations
-    char target_path[BPF_PATH_MAX];   // For symlink targets
+    char filename[BPF_PATH_MAX];        // Primary path
+    char new_filename[BPF_PATH_MAX];    // Secondary path for rename/symlink
 };
 
 
