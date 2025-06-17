@@ -42,7 +42,7 @@ struct syscall_trace_enter {
 	unsigned long args[6];
 };
 
-struct trace_event_raw_sys_enter_fchmodat {
+struct syscall_trace_enter_fchmodat {
     struct trace_entry ent;
     int __syscall_nr;
     int dfd;
@@ -117,20 +117,37 @@ static __always_inline u64 hash_string(const char *str, int max_len)
     return hash;
 }
 
-// Check if we should skip this event (rate limiting)
-static __always_inline bool should_skip_event(u32 pid, const char *pathname)
-{
-    u64 hash_key = ((u64)pid << 32) | (hash_string(pathname, BPF_PATH_MAX) & 0xFFFFFFFF);
-    u64 now = bpf_ktime_get_ns();
-    u64 *last_time = bpf_map_lookup_elem(&recent_save_map, &hash_key);
-    
-    // Skip if event happened within last 1 second for same file
-    if (last_time && (now - *last_time) < 1000000000ULL) {
-        return true;
+// Helper function to calculate string length (since bpf_strlen doesn't exist)
+static __always_inline int bpf_str_len(const char *str) {
+    int len = 0;
+    #pragma unroll
+    for (int i = 0; i < 32; i++) {   // Max path length limit
+        if (str[i] == '\0')
+            break;
+        len++;
     }
-    
-    // Update timestamp
-    bpf_map_update_elem(&recent_save_map, &hash_key, &now, BPF_ANY);
+    return len;
+}
+
+// Helper function to check if path should be excluded
+static __always_inline bool should_exclude_path(const char *pathname) {
+    if (!pathname)
+        return true;
+
+    // Common exclusions - check directory prefixes
+    if (bpf_strncmp(pathname, 5, "/tmp/") == 0)
+        return true;
+    if (bpf_strncmp(pathname, 9, "/var/log/") == 0)
+        return true;
+    if (bpf_strncmp(pathname, 6, "/proc/") == 0)
+        return true;
+    if (bpf_strncmp(pathname, 5, "/sys/") == 0)
+        return true;
+    if (bpf_strncmp(pathname, 5, "/dev/") == 0)
+        return true;
+    if (bpf_strncmp(pathname, 5, "/run/") == 0)
+        return true;
+
     return false;
 }
 
@@ -138,39 +155,53 @@ static __always_inline bool should_skip_event(u32 pid, const char *pathname)
 static inline int send_fim_event(void *ctx, __u32 event_type, __u32 pid, __u32 tgid, 
                                 __u32 uid, const char *filename, int dirfd, 
                                 int flags, __u32 mode, const char *comm) {
+    
     struct fim_event *event;
     
+    // Update total events counter
     u32 total_key = STAT_TOTAL_EVENTS;
     u64 *total_val = bpf_map_lookup_elem(&stats_map, &total_key);
     if (total_val) {
-      (*total_val)++;
-      bpf_map_update_elem(&stats_map, &total_key, total_val, BPF_EXIST);
+        (*total_val)++;
+        bpf_map_update_elem(&stats_map, &total_key, total_val, BPF_EXIST);
     }
     
+    // Update specific event type counter
     u32 type_key;
-    if (event_type == EVENT_TYPE_CREATE) {
-        type_key = STAT_CREATE_EVENTS;
-    }else if (event_type == EVENT_TYPE_DELETE) {
-        type_key = STAT_DELETE_EVENTS;
-    }else if (event_type == EVENT_TYPE_SAVE){
-        type_key = STAT_SAVE_EVENTS;
-    }else if (event_type == EVENT_TYPE_RENAME) {
-        type_key = STAT_RENAME_EVENTS;
-    }else if (event_type == EVENT_TYPE_SYMLINK) {
-        type_key = STAT_SYMLINK_EVENTS;
-    }else if (event_type == EVENT_TYPE_TIMESTAMP) {
-        type_key = STAT_TIMESTAMP_EVENTS;
-    }else if (event_type == EVENT_TYPE_CHOWN){
-        type_key = STAT_CHOWN_EVENTS;
-    }else{
-        type_key = STAT_CHMOD_EVENTS;
+    switch (event_type) {
+        case EVENT_TYPE_CREATE:
+            type_key = STAT_CREATE_EVENTS;
+            break;
+        case EVENT_TYPE_DELETE:
+            type_key = STAT_DELETE_EVENTS;
+            break;
+        case EVENT_TYPE_SAVE:
+            type_key = STAT_SAVE_EVENTS;
+            break;
+        case EVENT_TYPE_RENAME:
+            type_key = STAT_RENAME_EVENTS;
+            break;
+        case EVENT_TYPE_SYMLINK:
+            type_key = STAT_SYMLINK_EVENTS;
+            break;
+        case EVENT_TYPE_TIMESTAMP:
+            type_key = STAT_TIMESTAMP_EVENTS;
+            break;
+        case EVENT_TYPE_CHOWN:
+            type_key = STAT_CHOWN_EVENTS;
+            break;
+        default:
+            type_key = STAT_CHMOD_EVENTS;
+            break;
     }
+    
     u64 *type_val = bpf_map_lookup_elem(&stats_map, &type_key);
     if (type_val) {
-      (*type_val)++;
-      bpf_map_update_elem(&stats_map, &type_key, type_val, BPF_EXIST);
+        (*type_val)++;
+        bpf_map_update_elem(&stats_map, &type_key, type_val, BPF_EXIST);
     }
     
+    // Reserve space in ring buffer
     event = bpf_ringbuf_reserve(&fim_events, sizeof(*event), 0);
     if (!event) {
         // Increment dropped events counter
@@ -183,9 +214,7 @@ static inline int send_fim_event(void *ctx, __u32 event_type, __u32 pid, __u32 t
         return 0;
     }
     
-    if (!event)
-        return 0;
-    
+    // Fill event structure
     event->pid = pid;
     event->tgid = tgid;
     event->uid = uid;
@@ -195,8 +224,9 @@ static inline int send_fim_event(void *ctx, __u32 event_type, __u32 pid, __u32 t
     event->dirfd = dirfd;
     event->timestamp = bpf_ktime_get_ns();
     
-    if(bpf_probe_read_str(&event->comm, sizeof(event->comm), comm) < 0 || 
-        bpf_probe_read_str(&event->filename, sizeof(event->filename),filename)<0){
+    // Copy strings with error handling
+    if (bpf_probe_read_str(&event->comm, sizeof(event->comm), comm) < 0 || 
+        bpf_probe_read_str(&event->filename, sizeof(event->filename), filename) < 0) {
         bpf_ringbuf_discard(event, 0);
         return -1;
     }
@@ -234,6 +264,9 @@ int trace_enter_openat(struct syscall_trace_enter *ctx)
     // Try to read the filename
     if (filename) {
         bpf_probe_read_user_str(temp_info.pathname, sizeof(temp_info.pathname), filename);
+        if (should_exclude_path(temp_info.pathname)) {  // Use temp_info.pathname instead of filename
+            return 0;  // Skip event entirely - never reaches ring buffer
+        }
     }
     
     // Store temporary info
@@ -307,11 +340,12 @@ int trace_close_enter(struct trace_event_raw_sys_enter *ctx)
     
     // Generate SAVE event for any file that was opened with write flags
     if (info) {
-        // Rate limiting check
-        if (!should_skip_event(pid, info->pathname)) {
-            send_fim_event(ctx, EVENT_TYPE_SAVE, pid, tgid, uid, info->pathname, 
+      // Rate limiting check
+      if (should_exclude_path(info->pathname)) {
+          return 0;  // Skip event entirely - never reaches ring buffer
+      }
+      send_fim_event(ctx, EVENT_TYPE_SAVE, pid, tgid, uid, info->pathname, 
                           -1, 0, 0, comm);
-        }
     }
     
     // Always cleanup the fd tracking
@@ -324,7 +358,7 @@ int trace_close_enter(struct trace_event_raw_sys_enter *ctx)
 // Trace file deletion events via do_unlinkat
 SEC("kprobe/do_unlinkat")
 int BPF_KPROBE(do_unlinkat, int dfd, struct filename *name)
-{
+{   char pathname[256];
     const char *fname;
     __u64 id;
     __u32 tgid, pid, uid;
@@ -343,7 +377,12 @@ int BPF_KPROBE(do_unlinkat, int dfd, struct filename *name)
     fname = BPF_CORE_READ(name, name);
     if (!fname)
         return 0;
+    // Copy the filename to local buffer
+    bpf_probe_read_kernel_str(pathname, sizeof(pathname), fname); 
     
+    if (should_exclude_path(pathname)) {  // Use pathname instead of fname
+        return 0;
+    } 
     // Send delete event
     send_fim_event(ctx, EVENT_TYPE_DELETE, pid, tgid, uid, fname, dfd, 0, 0, comm);
     
@@ -351,26 +390,9 @@ int BPF_KPROBE(do_unlinkat, int dfd, struct filename *name)
 }
 
 // ===== TIMESTAMP MANIPULATION DETECTION =====
-SEC("tp/syscalls/sys_enter_utimes")
-int trace_utimes_enter(struct syscall_trace_enter *ctx)
-{
-    u64 id = bpf_get_current_pid_tgid();
-    u32 pid = id >> 32;
-    u32 tgid = id & 0xFFFFFFFF;
-    u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
-    const char *filename = (const char *)ctx->args[0];
-    char comm[TASK_COMM_LEN];
-    
-    bpf_get_current_comm(&comm, sizeof(comm));
-    
-    send_fim_event(ctx, EVENT_TYPE_TIMESTAMP, pid, tgid, uid, filename, 
-                  -1, 0, 0, comm);
-    return 0;
-}
-
 SEC("tp/syscalls/sys_enter_utimensat")
 int trace_utimensat_enter(struct syscall_trace_enter *ctx)
-{
+{   char pathname[256];
     u64 id = bpf_get_current_pid_tgid();
     u32 pid = id >> 32;
     u32 tgid = id & 0xFFFFFFFF;
@@ -381,6 +403,13 @@ int trace_utimensat_enter(struct syscall_trace_enter *ctx)
     
     bpf_get_current_comm(&comm, sizeof(comm));
     
+    // Copy the filename to local buffer
+    bpf_probe_read_kernel_str(pathname, sizeof(pathname), filename); 
+    
+    if (should_exclude_path(pathname)) {  // Use pathname instead of fname
+        return 0;
+    } 
+   
     send_fim_event(ctx, EVENT_TYPE_TIMESTAMP, pid, tgid, uid, filename, 
                   dirfd, 0, 0, comm);
     return 0;
@@ -391,6 +420,7 @@ int trace_utimensat_enter(struct syscall_trace_enter *ctx)
 SEC("tp/syscalls/sys_enter_renameat2")
 int trace_renameat2_enter(struct syscall_trace_enter *ctx)
 {
+    char pathname[256];
     // Same logic as renameat but with flags parameter
     u64 id = bpf_get_current_pid_tgid();
     u32 pid = id >> 32;
@@ -405,6 +435,11 @@ int trace_renameat2_enter(struct syscall_trace_enter *ctx)
     
     bpf_get_current_comm(&comm, sizeof(comm));
     
+    bpf_probe_read_kernel_str(pathname, sizeof(pathname), oldpath); 
+    
+    if (should_exclude_path(pathname)) {  // Use pathname instead of fname
+        return 0;
+    } 
     send_fim_event(ctx, EVENT_TYPE_RENAME, pid, tgid, uid, oldpath, 
                   olddirfd, flags, 0, comm);
     return 0;
@@ -412,7 +447,8 @@ int trace_renameat2_enter(struct syscall_trace_enter *ctx)
 
 SEC("tp/syscalls/sys_enter_rename")
 int trace_rename_enter(struct syscall_trace_enter *ctx)
-{
+{   
+    char pathname[256];
     u64 id = bpf_get_current_pid_tgid();
     u32 pid = id >> 32;
     u32 tgid = id & 0xFFFFFFFF;
@@ -423,6 +459,12 @@ int trace_rename_enter(struct syscall_trace_enter *ctx)
     
     bpf_get_current_comm(&comm, sizeof(comm));
     
+    bpf_probe_read_kernel_str(pathname, sizeof(pathname), oldpath); 
+    
+    if (should_exclude_path(pathname)) {  // Use pathname instead of fname
+        return 0;
+    }
+
     // Send event for old path (file being moved)
     send_fim_event(ctx, EVENT_TYPE_RENAME, pid, tgid, uid, oldpath, 
                   -1, 0, 0, comm);
@@ -432,7 +474,8 @@ int trace_rename_enter(struct syscall_trace_enter *ctx)
 // ===== SYMLINK CREATION DETECTION =====
 SEC("tp/syscalls/sys_enter_symlink")
 int trace_symlink_enter(struct syscall_trace_enter *ctx)
-{
+{   
+    char pathname[256];
     u64 id = bpf_get_current_pid_tgid();
     u32 pid = id >> 32;
     u32 tgid = id & 0xFFFFFFFF;
@@ -443,6 +486,12 @@ int trace_symlink_enter(struct syscall_trace_enter *ctx)
     
     bpf_get_current_comm(&comm, sizeof(comm));
     
+    bpf_probe_read_kernel_str(pathname, sizeof(pathname), linkpath); 
+    
+    if (should_exclude_path(pathname)) {  // Use pathname instead of fname
+        return 0;
+    }
+
     // Send event for the symlink being created
     send_fim_event(ctx, EVENT_TYPE_SYMLINK, pid, tgid, uid, linkpath, 
                   -1, 0, 0, comm);
@@ -451,7 +500,8 @@ int trace_symlink_enter(struct syscall_trace_enter *ctx)
 
 SEC("tp/syscalls/sys_enter_symlinkat")
 int trace_symlinkat_enter(struct syscall_trace_enter *ctx)
-{
+{   
+    char pathname[256];
     u64 id = bpf_get_current_pid_tgid();
     u32 pid = id >> 32;
     u32 tgid = id & 0xFFFFFFFF;
@@ -463,6 +513,11 @@ int trace_symlinkat_enter(struct syscall_trace_enter *ctx)
     
     bpf_get_current_comm(&comm, sizeof(comm));
     
+    bpf_probe_read_kernel_str(pathname, sizeof(pathname), linkpath); 
+    
+    if (should_exclude_path(pathname)) {  // Use pathname instead of fname
+        return 0;
+    }
     // Send event for the symlink being created
     send_fim_event(ctx, EVENT_TYPE_SYMLINK, pid, tgid, uid, linkpath, 
                   newdirfd, 0, 0, comm);
@@ -471,7 +526,7 @@ int trace_symlinkat_enter(struct syscall_trace_enter *ctx)
 
 SEC("tp/syscalls/sys_enter_fchownat")
 int trace_chown_enter(struct syscall_trace_enter *ctx)
-{
+{   
     u64 id = bpf_get_current_pid_tgid();
     u32 pid = id >> 32;
     u32 tgid = id & 0xFFFFFFFF;
@@ -493,22 +548,22 @@ int trace_chown_enter(struct syscall_trace_enter *ctx)
 }
 
 SEC("tp/syscalls/sys_enter_fchmodat")
-int trace_chmod_enter(struct trace_event_raw_sys_enter_fchmodat *ctx)
+int trace_chmod_enter_generic(struct syscall_trace_enter *ctx)
 {
     u64 id = bpf_get_current_pid_tgid();
     u32 pid = id >> 32;
     u32 tgid = id & 0xFFFFFFFF;
     u32 uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
     
-    int dirfd = ctx->dfd;
-    const char *pathname = ctx->filename;
-    umode_t mode = ctx->mode;
-    int flags = 0;  // fchmodat doesn't have flags in the tracepoint
+    // Extract arguments from generic structure
+    int dirfd = (int)ctx->args[0];
+    const char *pathname = (const char *)ctx->args[1];
+    umode_t mode = (umode_t)ctx->args[2];
+    int flags = 0;  // fchmodat may have flags in args[3] depending on kernel version
     
     char comm[TASK_COMM_LEN];
     bpf_get_current_comm(&comm, sizeof(comm));
     
-    // Send event - userspace receives the same fim_event structure
     send_fim_event(ctx, EVENT_TYPE_CHMOD, pid, tgid, uid, pathname, 
                   dirfd, flags, mode, comm);
     return 0;
