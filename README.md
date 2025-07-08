@@ -7,7 +7,7 @@
 [![Linux](https://img.shields.io/badge/Platform-Linux-green.svg)](https://kernel.org)
 [![eBPF](https://img.shields.io/badge/Powered_by-eBPF-orange.svg)](https://ebpf.io)
 [![C](https://img.shields.io/badge/Language-C-lightgrey.svg)](<https://en.wikipedia.org/wiki/C_(programming_language)>)
-[![Kernel](https://img.shields.io/badge/Kernel-4.18+-red.svg)](https://kernel.org)
+[![Kernel](https://img.shields.io/badge/Kernel-5.8+-red.svg)](https://kernel.org)
 
 **High-performance, kernel-space file integrity monitoring system leveraging eBPF for real-time security monitoring with minimal overhead.**
 
