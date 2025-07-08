@@ -12,7 +12,7 @@ struct file_state {
     struct file_state *next;
 };
 
-// File monitoring functions - Remove static keywords for external use
+// File monitoring functions
 bool has_content_changed(const char *filepath);
 void cleanup_file_cache(void);
 bool is_new_file_creation(const char *filepath);

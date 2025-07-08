@@ -11,28 +11,17 @@
 
 **High-performance, kernel-space file integrity monitoring system leveraging eBPF for real-time security monitoring with minimal overhead.**
 
-[🚀 Quick Start](#-quick-start) • [📖 Documentation](#-features) • [⚡ Performance](#-performance) • [🛠️ Installation](#-installation) • [📊 Examples](#-usage-examples)
+[🚀 Quick Start](#-quick-start) • [📖 Features](#-key-features) • [⚡ Performance](#-performance) • [🛠️ Installation](#-installation) • [📊 Examples](#-usage-examples)
 
 </div>
-
----
-
-## 📢 **Latest Updates**
-
-- **[2024.06.05]** 🎯📢 Initial release of FIM with comprehensive eBPF-based monitoring
-- **[2024.06.05]** 🔥 Added JSON logging with rich metadata and system context
-- **[2024.06.05]** ⚡ Optimized for high-performance monitoring with intelligent caching
-- **[2024.06.05]** 🛡️ Enhanced security features with content-aware change detection
-
----
 
 ## 🌟 **Why FIM?**
 
 <div align="center">
 
-|                 🚀 **High Performance**                 |                   🛡️ **Security First**                   |       🎯 **Precision Monitoring**       |
-| :-----------------------------------------------------: | :-------------------------------------------------------: | :-------------------------------------: |
-| eBPF kernel-space monitoring<br/>**~1-3% CPU overhead** | Real-time threat detection<br/>**Content-aware analysis** | Smart filtering & pattern matching<br/> |
+|                  🚀 **High Performance**                   |                   🛡️ **Security First**                   |       🎯 **Precision Monitoring**       |
+| :--------------------------------------------------------: | :-------------------------------------------------------: | :-------------------------------------: |
+| eBPF kernel-space monitoring<br/>**~minimal CPU overhead** | Real-time threat detection<br/>**Content-aware analysis** | Smart filtering & pattern matching<br/> |
 
 </div>
 
@@ -42,7 +31,7 @@
 
 ### 🔍 **Core Monitoring Capabilities**
 
-- **⚡ Real-time Events**: Monitor file creation, deletion, and modification with microsecond precision
+- **⚡ Real-time Events**: Monitor file creation, deletion, modification, symlink creation and permission changes with microsecond precision
 - **🧠 Content-Aware**: Hash-based verification to detect actual content changes
 - **👤 Process Context**: Track which processes are making file system changes
 - **🔐 User Attribution**: Monitor file operations by specific users or system-wide
@@ -59,7 +48,7 @@
 - **📋 JSON Logging**: Structured logging with detailed event metadata
 - **📺 Live Display**: Real-time monitoring with configurable output formats
 - **📈 Metadata Capture**: File permissions, ownership, size, and timestamps
-- **🏷️ Event Classification**: Categorize events by type (CREATE, DELETE, WRITE)
+- **🏷️ Event Classification**: Categorize events by type (CREATE, DELETE, WRITE, RENAME/MOVE, SYMLINK, CHMOD, CHOWN)
 
 ### ⚡ **Performance Optimized**
 
@@ -117,7 +106,7 @@ graph TB
 <details>
 <summary><b>🐧 System Requirements</b></summary>
 
-- Linux kernel **4.18+** with eBPF support
+- Linux kernel **5.8+** with eBPF support
 - Root privileges (required for eBPF program loading)
 - BTF (BPF Type Format) support in kernel
 
@@ -163,13 +152,11 @@ sudo make install
 
 ### 🎯 **Build Options**
 
-| Command           | Description                 |
-| ----------------- | --------------------------- |
-| `make`            | 🔨 Standard build           |
-| `make debug`      | 🐛 Debug build with symbols |
-| `make release`    | 🚀 Optimized release build  |
-| `make clean`      | 🧹 Clean build artifacts    |
-| `make check-deps` | ✅ Verify dependencies      |
+| Command           | Description              |
+| ----------------- | ------------------------ |
+| `make`            | 🔨 Standard build        |
+| `make clean`      | 🧹 Clean build artifacts |
+| `make check-deps` | ✅ Verify dependencies   |
 
 ---
 
@@ -249,7 +236,6 @@ sudo ./fim --monitor-create --monitor-delete --monitor-write \
 - `--print-uid` - Show user IDs
 - `--enable-logging` - Write events to `/var/log/fim.log`
 - `--show-flags` - Display file operation flags
-
 </details>
 
 ---
@@ -267,26 +253,27 @@ TIME       EVENT    PID    USER     PATH                           DETAILS
 
 ### 📋 **JSON Log Format**
 
-```json
+````json
 {
-  "timestamp": "2024-06-05T14:30:15.123456Z",
-  "event_type": "CREATE",
-  "pid": 1234,
-  "process": "vim",
-  "user": "alice",
-  "path": "/home/alice/document.txt",
-  "file_size": 1024,
-  "permissions": "rw-r--r--",
-  "owner": "alice",
-  "extension": ".txt",
-  "flags": ["O_WRONLY", "O_CREAT"],
-  "content_changed": true,
-  "system_info": {
-    "hostname": "server01",
-    "ip": "192.168.1.100"
-  }
+  "account": "root",
+  "asset": "test-ubuntu",
+  "asset_address": "192.168.17.148",
+  "asset_os_family": "linux",
+  "file_event": "other",
+  "file_extension": "log",
+  "file_name": "audit.log",
+  "file_owner": "root",
+  "file_path": "/var/log/audit/audit.log",
+  "file_permissions": "rw-r-----",
+  "file_size": 2039,
+  "process": "auditd",
+  "process_id": "750",
+  "process_path": "/usr/sbin/auditd",
+  "process_user": "root",
+  "timestamp": "2025-07-08T15:20:16.000Z",
+  "user": "root"
 }
-```
+```json
 
 ---
 
@@ -296,7 +283,7 @@ TIME       EVENT    PID    USER     PATH                           DETAILS
 
 | Metric                | Performance                                |
 | --------------------- | ------------------------------------------ |
-| **🔥 CPU Overhead**   | ~1-3% in typical scenarios                 |
+| **🔥 CPU Overhead**   | ~0.5-1% in typical scenarios               |
 | **💾 Memory Usage**   | Efficient caching with configurable limits |
 | **💽 Storage Impact** | Zero additional I/O for monitoring         |
 | **📈 Scalability**    | Handles high-volume operations efficiently |
@@ -312,7 +299,6 @@ TIME       EVENT    PID    USER     PATH                           DETAILS
 | • Requires root privileges for eBPF program loading       |
 | • Monitor access to the FIM binary and configuration      |
 | • Log files contain sensitive file system information     |
-| • Consider log rotation and secure storage for compliance |
 
 ---
 
@@ -326,7 +312,6 @@ TIME       EVENT    PID    USER     PATH                           DETAILS
 | **Permission Denied**           | Ensure running with root privileges             |
 | **eBPF Program Loading Failed** | Verify kernel eBPF support and BTF availability |
 | **Missing Dependencies**        | Run `make check-deps` to verify installation    |
-| **High CPU Usage**              | Reduce monitoring scope with exclude patterns   |
 
 </details>
 
@@ -337,9 +322,8 @@ TIME       EVENT    PID    USER     PATH                           DETAILS
 # Build and run in debug mode
 make debug
 sudo ./fim --verbose
-```
+````
 
 </details>
 
 ---
-

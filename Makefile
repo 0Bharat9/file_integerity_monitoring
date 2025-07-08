@@ -41,7 +41,6 @@ vmlinux:
 	@if [ ! -f $(INCLUDE_DIR)/vmlinux.h ]; then \
 		echo "Generating vmlinux.h..."; \
 		bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(INCLUDE_DIR)/vmlinux.h; \
-		echo "Note: You may need to comment out conflicting struct definitions in vmlinux.h if needed"; \
 	fi
 
 # Compile eBPF program (only include eBPF-safe headers)

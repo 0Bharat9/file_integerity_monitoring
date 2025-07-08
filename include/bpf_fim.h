@@ -1,20 +1,20 @@
 #ifndef BPF_FIM_H
 #define BPF_FIM_H
 
-// eBPF-specific header - only include kernel definitions
+// eBPF-specific header for kernel definitions
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
 
-// Constants (matching userspace)
+// Constants
 #define MAX_EXCLUDE_PATTERNS    64
 #define MAX_WATCH_PATTERNS      64
 #define AT_FDCWD               -100
 #define MAX_FILE_CACHE         1000
 #define HASH_SIZE              16
 
-// Event types (should match userspace program)
+// Event types
 #define EVENT_TYPE_CREATE      1
 #define EVENT_TYPE_DELETE      2
 #define EVENT_TYPE_SAVE        3
@@ -27,7 +27,8 @@
 #define BPF_PATH_MAX 256
 #define TASK_COMM_LEN 16
 #define FILENAME_LEN 256
-// BPF event structure (should match userspace)
+
+// BPF event structure
 struct fim_event {
     __u32 pid;
     __u32 tgid;
@@ -36,11 +37,11 @@ struct fim_event {
     __u32 flags;
     __u32 mode;
     int dirfd;
-    int new_dirfd;  // Add this for dual-path operations
+    int dirfd2;  // for (old+new) path NOTE: not working
     __u64 timestamp;
     char comm[TASK_COMM_LEN];
-    char filename[BPF_PATH_MAX];        // Primary path
-    char new_filename[BPF_PATH_MAX];    // Secondary path for rename/symlink
+    char filename[BPF_PATH_MAX]; // Primary path NOTE: not working
+    char filename2[BPF_PATH_MAX];// Secondary path NOTE: for rename/symlink
 };
 
 

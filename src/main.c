@@ -4,10 +4,7 @@
 #include "system_info.h"
 #include "fim.skel.h"
 
-// Remove the global variable definitions from here since they're in globals.c
-// Just declare them as extern or rely on the header files
-
-const char *argp_program_version = "fim 2.2";
+const char *argp_program_version = "fim 0.1";
 const char *argp_program_bug_address = "bharatexhash09@gmail.com";
 const char argp_program_doc[] =
 "Enhanced File Integrity Monitor - Monitor file creation, deletion, and write events\n"
@@ -283,12 +280,10 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		if (!env.strict_watch && env.watch_pattern_count > 0) {
 			fprintf(stderr, "Warning: -w patterns specified but --strict mode not enabled\n");
 		}
-	  if (!env.monitor_create && !env.monitor_delete && !env.monitor_write && 
-        !env.monitor_rename && !env.monitor_symlink && !env.monitor_time_change &&
-        !env.monitor_chown && !env.monitor_chmod) {
-        fprintf(stderr, "Error: At least one event type must be monitored\n");
-        argp_usage(state);
-    }
+		if (!env.monitor_create && !env.monitor_delete && !env.monitor_write) {
+			fprintf(stderr, "Error: At least one event type must be monitored\n");
+			argp_usage(state);
+		}
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -368,8 +363,8 @@ cleanup:
   }
   ring_buffer__free(rb);
 	fim_bpf__destroy(skel);
-  cleanup_logging();      // ADD: Clean up logging
-  cleanup_file_cache();   // ADD: Clean up file cache
+  cleanup_logging();
+  cleanup_file_cache();
 	return err;
 }
 

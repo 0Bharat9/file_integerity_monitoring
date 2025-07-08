@@ -8,8 +8,6 @@
 #include <arpa/inet.h>
 #include "system_info.h"
 
-//static char system_hostname[256] = "unknown";
-//static char system_ip[64] = "127.0.0.1";
 static bool system_info_initialized = false;
 
 // Initialize logging
@@ -47,7 +45,7 @@ static const char* get_file_event_type(__u32 event_type) {
 	}
 }
 
-// Log event to JSON file - REMOVED static
+// Log event to JSON file
 void log_event_json(const struct fim_event *event, const char *full_path) {
     if (!env.enable_logging || !log_file) {
 		return;
@@ -186,7 +184,7 @@ void escape_json_string(const char *src, char *dst, size_t dst_size) {
 }
 
 
-// Get file extension - REMOVED static
+// Get file extension
 static const char* get_file_extension(const char *filename) {
 	const char *dot = strrchr(filename, '.');
 	if (!dot || dot == filename) {
@@ -195,7 +193,7 @@ static const char* get_file_extension(const char *filename) {
 	return dot + 1;
 }
 
-// Get file owner name - REMOVED static
+// Get file owner name
 static bool get_file_owner(const char *filepath, char *owner_buf, size_t buf_size) {
 	struct stat st;
 	if (stat(filepath, &st) != 0) {
@@ -233,7 +231,7 @@ static void get_file_permissions(const char *filepath, char *perm_buf, size_t bu
 		(mode & S_IXOTH) ? 'x' : '-');
 }
 
-// Get file size static
+// Get file size
 static long get_file_size(const char *filepath) {
 	struct stat st;
 	if (stat(filepath, &st) == 0) {

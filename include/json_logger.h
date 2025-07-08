@@ -3,12 +3,12 @@
 
 #include "fim_userspace.h"
 
-// Logging functions - REMOVED static keyword
+// Logging functions
 bool init_logging();
 void cleanup_logging();
 void log_event_json(const struct fim_event *event, const char *full_path);
 
-// Utility functions - REMOVED static keyword where needed for external use
+// Utility functions
 static const char *get_file_extension(const char *filename);
 static bool get_file_owner(const char *filepath, char *owner_buf, size_t buf_size);
 static void get_file_permissions(const char *filepath, char *perm_buf, size_t buf_size);

@@ -1,7 +1,7 @@
 #ifndef FIM_USERSPACE_H
 #define FIM_USERSPACE_H
 
-// Userspace headers - safe to include standard library
+// Userspace headers
 #include <argp.h>
 #include <signal.h>
 #include <stdio.h>
@@ -17,7 +17,7 @@
 #include <bpf/bpf.h>
 #include <openssl/evp.h>
 #include <openssl/md5.h> 
-// Include the generated skeleton
+// generated skeleton
 #include "fim.skel.h"
 
 // Constants
@@ -29,7 +29,7 @@
 #define LOG_FILE_PATH          "/var/log/fim.log"
 #define PATH_MAX               4096
 
-// Event types (should match BPF program)
+// Event types (same as BPF program)
 #define EVENT_TYPE_CREATE      1
 #define EVENT_TYPE_DELETE      2
 #define EVENT_TYPE_SAVE        3
@@ -77,7 +77,7 @@ extern struct passwd *pw;
 extern volatile sig_atomic_t exiting;
 extern int stats_fd;
 
-// BPF event structure (should match BPF program)
+// BPF event structure (same as BPF program)
 struct fim_event {
     __u32 pid;
     __u32 tgid;
@@ -86,9 +86,11 @@ struct fim_event {
     int flags;
     __u32 mode;
     int dirfd;
+    int dirfd2;
     __u64 timestamp;
     char comm[16];
     char filename[256];
+    char filename2[256];
 };
 
 #endif /* FIM_USERSPACE_H */

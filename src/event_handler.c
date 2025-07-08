@@ -4,6 +4,7 @@
 #include "path_utils.h"
 #include <errno.h>
 
+// userspace side pattern mathcing exlusions
 static bool matches_exclude_patterns(const char *fname)
 {
 	for (int i = 0; i < env.exclude_pattern_count; i++) {
@@ -13,6 +14,7 @@ static bool matches_exclude_patterns(const char *fname)
 	return false;
 }
 
+// userspace side strict watch pattern
 static bool matches_watch_patterns(const char *fname)
 {
 	if (!env.strict_watch || env.watch_pattern_count == 0)
@@ -25,6 +27,7 @@ static bool matches_watch_patterns(const char *fname)
 	return false;
 }
 
+// editor tmp files exlusions FIXME: does not works for all the editors
 static bool is_editor_temp_file(const char *fname, const char *comm)
 {
 	const char *basename = strrchr(fname, '/');
@@ -103,6 +106,7 @@ static bool is_editor_atomic_save(const char *fname, const char *comm, __u32 eve
 	
 	return false;
 }
+
 
 static const char *get_event_type_str(__u32 event_type)
 {
@@ -203,7 +207,7 @@ void print_configuration()
 	}
   printf(" events\n");
 	
-	// NEW: Content awareness status
+	// Content awareness status
 	if (env.content_aware) {
 		printf("Content-aware monitoring: ENABLED");
 		if (env.ignore_unchanged) {
@@ -318,7 +322,7 @@ int handle_event(void *ctx, void *data, size_t data_sz)
 	char *full_path;
 	char flags_str[16];
 
-	// Filter by event type based on user preferences
+	// Filter by event type (user preferences)
 	if (event->event_type == EVENT_TYPE_CREATE && !env.monitor_create)
 		return 0;
 	if (event->event_type == EVENT_TYPE_DELETE && !env.monitor_delete)
@@ -422,7 +426,7 @@ int handle_event(void *ctx, void *data, size_t data_sz)
 	if (env.print_uid)
 		printf("%-7u ", event->uid);
 
-	if (env.show_flags && event->event_type == EVENT_TYPE_CREATE) {
+	if (env.show_flags) {
 		format_flags(event->flags, flags_str, sizeof(flags_str));
 		printf("%-6u %-16s %-7s %-8s %04o %s\n",
 		       event->pid, event->comm, get_event_type_str(event->event_type),

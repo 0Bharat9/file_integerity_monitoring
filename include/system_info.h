@@ -16,7 +16,7 @@ extern char system_hostname[256];
 extern char system_ip[16];  // INET_ADDRSTRLEN
 extern char current_user[256];
 
-// System info functions - REMOVED static keyword
+// System info functions
 void init_system_info(void);
 
 #endif /* SYSTEM_INFO_H */

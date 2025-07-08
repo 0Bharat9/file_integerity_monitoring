@@ -1,11 +1,10 @@
 #include "system_info.h"
 
-// Define the global variables
 char system_hostname[256] = "unknown";
 char system_ip[16] = "127.0.0.1";
 char current_user[256] = "unknown";
 
-// Initialize system information - REMOVED static keyword
+// Initialize system information
 void init_system_info() {
 	// Get hostname
 	if (gethostname(system_hostname, sizeof(system_hostname)) != 0) {

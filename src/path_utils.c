@@ -1,6 +1,5 @@
 #include "path_utils.h"
 
-// REMOVED static keyword from all functions
 char *get_process_cwd(pid_t pid)
 {
 	char path[64];

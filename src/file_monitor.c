@@ -48,7 +48,7 @@ static bool calculate_file_hash(const char *filepath, unsigned char *hash) {
     return true;
 }
 
-// Get or create file state entry
+// file state entry
 struct file_state *get_file_state(const char *path) {
 	unsigned int idx = hash_path(path);
 	struct file_state *entry = file_cache[idx];
@@ -79,6 +79,7 @@ struct file_state *get_file_state(const char *path) {
 	return entry;
 }
 
+// check if the file being created is a new file
 bool is_new_file_creation(const char *filepath) {
     struct file_state *state = get_file_state(filepath);
     if (!state) {
@@ -90,7 +91,7 @@ bool is_new_file_creation(const char *filepath) {
     }
     
     state->file_exists = true;  // Mark as existing
-    return true;  // This is new
+    return true;
 }
 
 // Check if file content has actually changed
@@ -109,10 +110,10 @@ bool has_content_changed(const char *filepath) {
 		return true;  // If can't read file, assume changed
 	}
 	
-	// Compare with stored hash
+	// Comparing with stored hash
 	bool changed = (memcmp(state->hash, new_hash, HASH_SIZE) != 0);
 	
-	// Update stored hash if changed or if this is first time
+	// Update stored hash if changed or if this is the first time
 	if (changed || state->last_modified == 0) {
 		memcpy(state->hash, new_hash, HASH_SIZE);
 		state->last_modified = time(NULL);

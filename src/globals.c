@@ -1,13 +1,13 @@
 #include "fim_userspace.h"
 
-// DEFINE the global variables here (only once in the entire program)
+// DEFINE the global variables
 struct file_state *file_cache[MAX_FILE_CACHE] = {NULL};
 int  cache_entries = 0;
 FILE *log_file = NULL;
 struct passwd *pw = NULL;
 int stats_fd = -1;
 
-// Initialize env with default values
+// Initializing env with default values
 struct env env = {
     .verbose = false,
     .timestamp = false,
