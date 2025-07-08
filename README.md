@@ -242,15 +242,6 @@ sudo ./fim --monitor-create --monitor-delete --monitor-write \
 
 ## 📊 **Output Formats**
 
-### 🖥️ **Console Display**
-
-```
-TIME       EVENT    PID    USER     PATH                           DETAILS
-14:30:15   CREATE   1234   alice    /home/alice/document.txt      [flags: O_WRONLY|O_CREAT]
-14:30:16   WRITE     1234   alice    /home/alice/document.txt      [content changed]
-14:30:20   DELETE   1234   alice    /tmp/temp_file.tmp
-```
-
 ### 📋 **JSON Log Format**
 
 ```json
