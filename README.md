@@ -120,7 +120,8 @@ graph TB
 ```bash
 sudo apt update && sudo apt install -y \
     libbpf-dev libelf-dev zlib1g-dev libssl-dev \
-    bpftool clang gcc linux-headers-$(uname -r)
+    linux-tools-common linux-tools-$(uname -r) \
+    clang gcc linux-headers-$(uname -r) pkg-config
 ```
 
 **RHEL/CentOS/Fedora:**
@@ -128,7 +129,9 @@ sudo apt update && sudo apt install -y \
 ```bash
 sudo dnf install -y \
     libbpf-devel elfutils-libelf-devel zlib-devel \
-    openssl-devel bpftool clang gcc kernel-headers
+    openssl-devel clang gcc kernel-devel pkg-config
+# For bpftool (may need to build from source on some versions)
+sudo dnf install -y bpftool || echo "bpftool not available via package manager"
 ```
 
 </details>
@@ -266,7 +269,6 @@ sudo ./fim --monitor-create --monitor-delete --monitor-write \
 }
 ```
 
-````
 ---
 
 ## ⚡ **Performance**
@@ -286,11 +288,11 @@ sudo ./fim --monitor-create --monitor-delete --monitor-write \
 
 ## 🔒 **Security Considerations**
 
-| ⚠️ **Security Notes**                                     |
-| --------------------------------------------------------- |
-| • Requires root privileges for eBPF program loading       |
-| • Monitor access to the FIM binary and configuration      |
-| • Log files contain sensitive file system information     |
+| ⚠️ **Security Notes**                                 |
+| ----------------------------------------------------- |
+| • Requires root privileges for eBPF program loading   |
+| • Monitor access to the FIM binary and configuration  |
+| • Log files contain sensitive file system information |
 
 ---
 
@@ -314,7 +316,7 @@ sudo ./fim --monitor-create --monitor-delete --monitor-write \
 # Build and run in debug mode
 make debug
 sudo ./fim --verbose
-````
+```
 
 </details>
 
