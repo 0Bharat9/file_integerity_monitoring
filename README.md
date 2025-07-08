@@ -253,7 +253,7 @@ TIME       EVENT    PID    USER     PATH                           DETAILS
 
 ### 📋 **JSON Log Format**
 
-````json
+```json
 {
   "account": "root",
   "asset": "test-ubuntu",
@@ -275,6 +275,7 @@ TIME       EVENT    PID    USER     PATH                           DETAILS
 }
 ```
 
+````
 ---
 
 ## ⚡ **Performance**
