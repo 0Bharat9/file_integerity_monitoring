@@ -273,7 +273,7 @@ TIME       EVENT    PID    USER     PATH                           DETAILS
   "timestamp": "2025-07-08T15:20:16.000Z",
   "user": "root"
 }
-```json
+```
 
 ---
 
