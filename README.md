@@ -277,7 +277,7 @@ sudo ./fim --monitor-create --monitor-delete --monitor-write \
 
 | Metric                | Performance                                |
 | --------------------- | ------------------------------------------ |
-| **🔥 CPU Overhead**   | ~0.5-1% in typical scenarios               |
+| **🔥 CPU Overhead**   | ~1-3% in typical scenarios                 |
 | **💾 Memory Usage**   | Efficient caching with configurable limits |
 | **💽 Storage Impact** | Zero additional I/O for monitoring         |
 | **📈 Scalability**    | Handles high-volume operations efficiently |
